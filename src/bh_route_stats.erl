@@ -7,9 +7,10 @@
 
 -export([prepare_conn/1, handle/3]).
 %% Utilities
--export([get_stats/0]).
+-export([
+         get_stats/0
+        ]).
 
--define(S_STATS_BLOCK_TIMES, "stats_block_times").
 -define(S_STATS_ELECTION_TIMES, "stats_election_times").
 -define(S_STATS_STATE_CHANNELS, "stats_state_channels").
 -define(S_STATS_TOKEN_SUPPLY, "stats_token_supply").
@@ -19,7 +20,6 @@
 
 prepare_conn(Conn) ->
     Loads = [
-        ?S_STATS_BLOCK_TIMES,
         ?S_STATS_ELECTION_TIMES,
         ?S_STATS_COUNTS,
         ?S_STATS_CHALLENGES,
@@ -50,24 +50,24 @@ get_token_supply([{format, Format}], CacheTime) ->
 
 get_stats() ->
     {ok, [
-        BlockTimeResults,
         ElectionTimeResults,
         StateChannelResults,
         SupplyResult,
         CountsResults,
         ChallengeResults,
-        FeeResults
+        FeeResults,
+        BlockTimeResults
     ]} =
     bh_cache:get({?MODULE, get_stats}, fun() ->
         ?EXECUTE_BATCH([
-            {?S_STATS_BLOCK_TIMES, []},
             {?S_STATS_ELECTION_TIMES, []},
             {?S_STATS_STATE_CHANNELS, []},
             {?S_STATS_TOKEN_SUPPLY, []},
             {?S_STATS_COUNTS, []},
             {?S_STATS_CHALLENGES, []},
             {?S_STATS_FEES, []}
-        ]) end),
+        ]) ++ [bh_route_blocks:get_block_time_stats()]
+                                       end),
 
     {ok, #{
         block_times => mk_stats_from_time_results(BlockTimeResults),
