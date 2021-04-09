@@ -108,11 +108,11 @@ handle_call({put, Key, Value, Opts}, _From, State) ->
                              expire_ts = ExpireTime}),
     {reply, {ok, Value}, State};
 handle_call(Call, From, State) ->
-    lager:warn("Unexpected call ~p from ~p", [Call, From]),
+    lager:warning("Unexpected call ~p from ~p", [Call, From]),
     {reply, diediedie, State}.
 
 handle_cast(Cast, State) ->
-    lager:warn("Unexpected cast ~p", [Cast]),
+    lager:warning("Unexpected cast ~p", [Cast]),
     {noreply, State}.
 
 handle_info(bh_cache_tick, State) ->
@@ -120,7 +120,7 @@ handle_info(bh_cache_tick, State) ->
     Tref = schedule_new_tick(),
     {noreply, State#state{tref=Tref}};
 handle_info(Info, State) ->
-    lager:warn("Unexpected info ~p", [Info]),
+    lager:warning("Unexpected info ~p", [Info]),
     {noreply, State}.
 
 %% internal functions
