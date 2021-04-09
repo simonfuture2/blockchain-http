@@ -1,25 +1,23 @@
-%% gen server caches results
+%% @doc In memory cache for expensive query results
 -module(bh_cache).
 -behaviour(gen_server).
 
 -define(TBL_NAME, '__bh_cache_table').
 -define(ETS_OPTS, [named_table, {keypos, 2}, {read_concurrency, true}]).
 -define(DEFAULT_TTL, 60). % seconds
--define(TIMER_INTERVAL, 15000). % milliseconds
-
--record(entry = {
-          key = undefined :: term(),
-          value = undefined :: term(),
-          expire_ts = 0 :: non_neg_integer() }).
+-define(TICK_INTERVAL, 15000). % milliseconds
 
 %% public API
 -export([start_link/0,
          get/1,
+         get/2,
+         get/3,
          put/2,
-         put/3]).
+         put/3
+        ]).
 
 %% required callbacks
--export([init/2,
+-export([init/1,
          handle_cast/2,
          handle_call/3,
          handle_info/2
@@ -30,29 +28,72 @@
           tref = undefined :: reference()
          }).
 
+-record(entry, {
+          key = undefined :: term(),
+          value = undefined :: term(),
+          expire_ts = 0 :: non_neg_integer() }).
+
+-spec start_link() -> {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
 start_link() ->
-    gen_server:start_link(?MODULE, {local, ?MODULE}, []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec get( Key :: term() ) -> not_found | {ok, Value :: term() }.
+%% @doc Attempt to lookup a value associated with the given key
+%% in the cache. If the key is not found, return `not_found'.
 get(Key) ->
     case ets:lookup(?TBL_NAME, Key) of
         [[]] -> not_found;
         [Entry] -> maybe_expired(Entry#entry.value, erlang:system_time(seconds), Entry#entry.expire_ts)
     end.
 
+-spec get( Key :: term(),
+           LookupFun :: fun(() -> Value :: term()) ) -> {ok, Value :: term()}.
+%% @doc Attempt to lookup a value associated with the given key
+%% in the cache. If the key is not found, execute the provided
+%% zero arity fun to return a value to cache.
+%%
+%% This call is equivalent to `get/3' with all options defaulted.
+get(Key, LookupFun) ->
+    get(Key, LookupFun, #{}).
+
+-spec get( Key :: term(),
+           LookupFun :: fun(() -> Value :: term()),
+           Options :: map() ) -> {ok, Value :: term()}.
+%% @doc Attempt to lookup a value associated with the given key
+%% in the cache. If the key is not found, execute the provided
+%% zero arity fun to return a value to cache.
+%%
+%% The only defined option at this time is `ttl' which
+%% defines the number of seconds to keep a value in the cache.
+%% The default time is 60 seconds.
+get(Key, LookupFun, Opts) ->
+    case ?MODULE:get(Key) of
+        not_found ->
+            Value = LookupFun(),
+            ?MODULE:put(Key, Value, Opts);
+        V -> V
+    end.
+
 -spec put( Key :: term(),
            Value :: term() ) -> {ok, Value :: term()}.
+%% @doc Associate the given key with the given value.
+%%
+%% Equivalent to `put/3' with all options defaulted.
 put(Key, Value) ->
     put(Key, Value, #{}).
 
 -spec put( Key :: term(),
            Value :: term(),
            Options :: map() ) -> {ok, Value :: term()}.
+%% @doc Associate the given key with the given value.
+%%
+%% The only defined option at this time is `ttl' which
+%% defines the number of seconds to keep a value in the cache.
+%% The default time is 60 seconds.
 put(Key, Value, Opts) ->
     gen_server:call(?MODULE, {put, Key, Value, Opts}).
 
 %% gen server callbacks
-
 init([]) ->
     Tid = ets:new(?TBL_NAME, ?ETS_OPTS),
     Tref = schedule_new_tick(),
@@ -96,7 +137,7 @@ schedule_new_tick() ->
 -spec expire_cache() -> ok.
 expire_cache() ->
     Current = erlang:system_time(seconds),
-    Removed = ets:foldl(fun(#entry{key = K, expire_ts = E }, Acc) when Current >= Expire ->
+    Removed = ets:foldl(fun(#entry{key = K, expire_ts = E }, Acc) when Current >= E ->
                                 true = ets:delete(?TBL_NAME, K),
                                 Acc + 1;
                            (_Entry, Acc) -> Acc

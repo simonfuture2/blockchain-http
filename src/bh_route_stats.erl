@@ -49,7 +49,7 @@ get_token_supply([{format, Format}], CacheTime) ->
     end.
 
 get_stats() ->
-    [
+    {ok, [
         BlockTimeResults,
         ElectionTimeResults,
         StateChannelResults,
@@ -57,7 +57,8 @@ get_stats() ->
         CountsResults,
         ChallengeResults,
         FeeResults
-    ] =
+    ]} =
+    bh_cache:get({?MODULE, get_stats}, fun() ->
         ?EXECUTE_BATCH([
             {?S_STATS_BLOCK_TIMES, []},
             {?S_STATS_ELECTION_TIMES, []},
@@ -66,7 +67,7 @@ get_stats() ->
             {?S_STATS_COUNTS, []},
             {?S_STATS_CHALLENGES, []},
             {?S_STATS_FEES, []}
-        ]),
+        ]) end),
 
     {ok, #{
         block_times => mk_stats_from_time_results(BlockTimeResults),
