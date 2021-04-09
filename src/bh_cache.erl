@@ -42,7 +42,7 @@ start_link() ->
 %% in the cache. If the key is not found, return `not_found'.
 get(Key) ->
     case ets:lookup(?TBL_NAME, Key) of
-        [[]] -> not_found;
+        [] -> not_found;
         [Entry] -> maybe_expired(Entry#entry.value, erlang:system_time(seconds), Entry#entry.expire_ts)
     end.
 
